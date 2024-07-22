@@ -6,6 +6,7 @@ from django.db import close_old_connections, transaction
 from django.template.exceptions import TemplateDoesNotExist
 from django.template.loader import render_to_string
 from django.utils import timezone
+from wagtail.models import Site
 
 from birdsong.models import Campaign, CampaignStatus, Contact
 from birdsong.utils import send_mass_html_mail
@@ -46,17 +47,24 @@ class SMTPEmailBackend(BaseEmailBackend):
     def send_campaign(self, request, campaign, contacts, test_send=False):
         messages = []
 
+        site = Site.objects.get(is_default_site=True)
+        root_url = site.root_url
         for contact in contacts:
             message_data = {
                 'subject': campaign.subject,
                 'from_email': self.from_email,
                 'to': [contact.email],
                 'reply_to': [self.reply_to],
-
             }
-            html_content = render_to_string(
-                campaign.get_template(request),
-                campaign.get_context(request, contact),
+            html_content = (
+                render_to_string(
+                    campaign.get_template(request),
+                    campaign.get_context(request, contact),
+                )
+                # replace relative link and document urls with absolute urls
+                .replace('href="/', f'href="{root_url}/')
+                # replace relative image urls with absolute urls
+                .replace('src="/', f'src="{root_url}/')
             )
             try:
                 text_content = render_to_string(
